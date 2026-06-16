@@ -87,7 +87,7 @@ sudo apt install -y \
     libudev-dev
 
 echo
-echo "[4/11] Downloading Mali g29p1"
+echo "[4/11] Downloading Mali g29p1 and configuring paths"
 
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
@@ -125,6 +125,14 @@ if [ -z "${REAL_MALI_LIB}" ]; then
 fi
 
 sudo ln -sf "${REAL_MALI_LIB}" "${MALI_LIB}"
+
+# --- INÍCIO DA CORREÇÃO DO DLOPEN ---
+echo "Configuring ldconfig and symlinks for /opt isolation..."
+sudo ln -sf libmali.so "${MALI_LIB_DIR}/libmali.so.0"
+sudo ln -sf libmali.so "${MALI_LIB_DIR}/libmali.so.1"
+echo "${MALI_LIB_DIR}" | sudo tee /etc/ld.so.conf.d/00-mali-g29p1.conf >/dev/null
+sudo ldconfig
+# --- FIM DA CORREÇÃO ---
 
 echo
 echo "Real Mali library:"
