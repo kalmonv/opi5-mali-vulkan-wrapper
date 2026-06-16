@@ -10,14 +10,14 @@ echo " OpenGL backend: Panfrost/Panfork"
 echo "===================================================="
 
 if [ "$(uname -m)" != "aarch64" ]; then
-echo "ERROR: this script is intended for ARM64/aarch64 systems."
-exit 1
+    echo "ERROR: this script is intended for ARM64/aarch64 systems."
+    exit 1
 fi
 
 if [ "${EUID}" -eq 0 ]; then
-echo "ERROR: do not run this script as root."
-echo "Run it as your normal user. The script will use sudo when needed."
-exit 1
+    echo "ERROR: do not run this script as root."
+    echo "Run it as your normal user. The script will use sudo when needed."
+    exit 1
 fi
 
 TARGET_USER="${SUDO_USER:-$USER}"
@@ -29,6 +29,7 @@ WRAPPER_REPO="https://github.com/zeyadadev/mali-vulkan-icd-wrapper.git"
 VULKAN_HEADERS_REPO="https://github.com/KhronosGroup/Vulkan-Headers.git"
 
 MALI_G29P1_DEB_URL="https://github.com/ginkage/libmali-rockchip/releases/download/v1.9-1-4b399ed/libmali-valhall-g610-g29p1-x11-wayland-gbm_1.9-1_arm64.deb"
+
 MALI_OPT_DIR="/opt/mali-g29p1"
 MALI_LIB_DIR="${MALI_OPT_DIR}/usr/lib/aarch64-linux-gnu"
 MALI_LIB="${MALI_LIB_DIR}/libmali.so"
@@ -36,32 +37,57 @@ MALI_LIB="${MALI_LIB_DIR}/libmali.so"
 echo
 echo "[1/11] System information"
 uname -a
-echo
 
+echo
 echo "[2/11] Creating backup at: ${BACKUP_DIR}"
+
 mkdir -p "${BACKUP_DIR}"
 
-dpkg -l | grep -E "mali|mesa|vulkan|panfork|rockchip" | tee "${BACKUP_DIR}/packages-before.txt" || true
+dpkg -l | grep -E "mali|mesa|vulkan|panfork|rockchip" \
+    | tee "${BACKUP_DIR}/packages-before.txt" || true
 
 sudo cp -a /etc/vulkan "${BACKUP_DIR}/etc-vulkan-backup" 2>/dev/null || true
 sudo cp -a /usr/share/vulkan "${BACKUP_DIR}/usr-share-vulkan-backup" 2>/dev/null || true
 
 echo
 echo "[3/11] Installing build dependencies"
+
 sudo apt update
 
-sudo apt install -y 
-git wget curl ca-certificates 
-cmake build-essential ninja-build pkg-config 
-libvulkan-dev vulkan-tools mesa-utils 
-libx11-dev libxcb1-dev libx11-xcb-dev libxext-dev 
-libxcb-dri3-dev libxcb-present-dev libxcb-sync-dev 
-libxcb-randr0-dev libxcb-shm0-dev libxshmfence-dev 
-libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxxf86vm-dev 
-libdrm-dev libwayland-dev wayland-protocols libudev-dev
+sudo apt install -y \
+    git \
+    wget \
+    curl \
+    ca-certificates \
+    cmake \
+    build-essential \
+    ninja-build \
+    pkg-config \
+    libvulkan-dev \
+    vulkan-tools \
+    mesa-utils \
+    libx11-dev \
+    libxcb1-dev \
+    libx11-xcb-dev \
+    libxext-dev \
+    libxcb-dri3-dev \
+    libxcb-present-dev \
+    libxcb-sync-dev \
+    libxcb-randr0-dev \
+    libxcb-shm0-dev \
+    libxshmfence-dev \
+    libxrandr-dev \
+    libxinerama-dev \
+    libxcursor-dev \
+    libxi-dev \
+    libxxf86vm-dev \
+    libdrm-dev \
+    libwayland-dev \
+    wayland-protocols \
+    libudev-dev
 
 echo
-echo "[4/11] Downloading and extracting Mali g29p1 userspace blob to ${MALI_OPT_DIR}"
+echo "[4/11] Downloading Mali g29p1"
 
 mkdir -p "${WORKDIR}"
 cd "${WORKDIR}"
@@ -69,54 +95,68 @@ cd "${WORKDIR}"
 MALI_DEB="${WORKDIR}/$(basename "${MALI_G29P1_DEB_URL}")"
 
 if [ ! -f "${MALI_DEB}" ]; then
-wget -O "${MALI_DEB}" "${MALI_G29P1_DEB_URL}"
+    wget -O "${MALI_DEB}" "${MALI_G29P1_DEB_URL}"
 else
-echo "Mali g29p1 package already downloaded: ${MALI_DEB}"
+    echo "Package already downloaded:"
+    echo "${MALI_DEB}"
 fi
 
 sudo mkdir -p "${MALI_OPT_DIR}"
 sudo dpkg-deb -x "${MALI_DEB}" "${MALI_OPT_DIR}"
 
-REAL_MALI_LIB="$(find "${MALI_LIB_DIR}" -maxdepth 1 -type f ( -name "libmali-valhall-g610-g29p1*.so*" -o -name "libmali*.so*" ) | sort | head -n 1 || true)"
+REAL_MALI_LIB="$(
+find "${MALI_LIB_DIR}" \
+    -maxdepth 1 \
+    -type f \
+    \( \
+        -name "libmali-valhall-g610-g29p1*.so*" \
+        -o \
+        -name "libmali*.so*" \
+    \) \
+    | sort \
+    | head -n 1
+)"
 
 if [ -z "${REAL_MALI_LIB}" ]; then
-echo "ERROR: no Mali g29p1 library found inside:"
-echo "${MALI_LIB_DIR}"
-echo
-echo "Search manually with:"
-echo "find ${MALI_OPT_DIR} -iname '*mali*.so*' | sort"
-exit 1
+    echo "ERROR: Mali library not found."
+    echo "Search manually:"
+    echo "find ${MALI_OPT_DIR} -iname '*mali*.so*'"
+    exit 1
 fi
 
 sudo ln -sf "${REAL_MALI_LIB}" "${MALI_LIB}"
 
-echo "Mali g29p1 real library:"
-echo "${REAL_MALI_LIB}"
 echo
-echo "Mali wrapper target library:"
+echo "Real Mali library:"
+echo "${REAL_MALI_LIB}"
+
+echo
+echo "Wrapper target:"
 readlink -f "${MALI_LIB}"
 
-if [ ! -f "${MALI_LIB}" ]; then
-echo "ERROR: ${MALI_LIB} was not created."
-exit 1
-fi
-
 echo
-echo "[5/11] Installing newer Vulkan-Headers into /usr/local"
+echo "[5/11] Vulkan-Headers"
 
 cd "${WORKDIR}"
 
 if [ ! -d Vulkan-Headers ]; then
-git clone --depth 1 "${VULKAN_HEADERS_REPO}"
+    git clone --depth 1 "${VULKAN_HEADERS_REPO}"
 else
-cd Vulkan-Headers
-git pull --ff-only || true
-cd "${WORKDIR}"
+    cd Vulkan-Headers
+    git pull --ff-only || true
+    cd "${WORKDIR}"
 fi
 
-cd "${WORKDIR}/Vulkan-Headers"
+cd Vulkan-Headers
+
 rm -rf build
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local
+
+cmake \
+    -S . \
+    -B build \
+    -DCMAKE_INSTALL_PREFIX=/usr/local
+
+sudo cmake --build build -j"$(nproc)"
 sudo cmake --install build
 
 echo
@@ -126,23 +166,23 @@ grep -R "VkSurfacePresentModeEXT" /usr/local/include/vulkan/vulkan_core.h >/dev/
 grep -R "PFN_vkReleaseSwapchainImagesEXT" /usr/local/include/vulkan/vulkan_core.h >/dev/null
 grep -R "VkFrameBoundaryEXT" /usr/local/include/vulkan/vulkan_core.h >/dev/null
 
-echo "Vulkan headers OK."
+echo "Vulkan headers OK"
 
 echo
-echo "[7/11] Downloading or updating mali-vulkan-icd-wrapper"
+echo "[7/11] Downloading wrapper"
 
 cd "${WORKDIR}"
 
 if [ ! -d mali-vulkan-icd-wrapper ]; then
-git clone "${WRAPPER_REPO}"
+    git clone "${WRAPPER_REPO}"
 else
-cd mali-vulkan-icd-wrapper
-git pull --ff-only || true
-cd "${WORKDIR}"
+    cd mali-vulkan-icd-wrapper
+    git pull --ff-only || true
+    cd "${WORKDIR}"
 fi
 
 echo
-echo "[8/11] Building and installing 64-bit Mali Vulkan wrapper"
+echo "[8/11] Building wrapper"
 
 cd "${WORKDIR}/mali-vulkan-icd-wrapper"
 
@@ -151,32 +191,32 @@ rm -rf build64
 export C_INCLUDE_PATH="/usr/local/include:${C_INCLUDE_PATH:-}"
 export CPLUS_INCLUDE_PATH="/usr/local/include:${CPLUS_INCLUDE_PATH:-}"
 
-WRAPPER_INTERACTIVE=0 
-WRAPPER_INSTALL_BUILD_DEPS=0 
-WRAPPER_BUILD_64BIT=1 
-WRAPPER_BUILD_32BIT=0 
-WRAPPER_PRUNE_UNSELECTED_ARCH=1 
-WRAPPER_MALI_DRIVER_PATH_64="${MALI_LIB}" 
-./scripts/wrapper/build_wrapper.sh 2>&1 | tee "${BACKUP_DIR}/build-wrapper.log"
+export WRAPPER_INTERACTIVE=0
+export WRAPPER_INSTALL_BUILD_DEPS=0
+export WRAPPER_BUILD_64BIT=1
+export WRAPPER_BUILD_32BIT=0
+export WRAPPER_PRUNE_UNSELECTED_ARCH=1
+export WRAPPER_MALI_DRIVER_PATH_64="${MALI_LIB}"
+
+./scripts/wrapper/build_wrapper.sh \
+    2>&1 | tee "${BACKUP_DIR}/build-wrapper.log"
 
 echo
-echo "[9/11] Disabling old direct Mali ICD files"
+echo "[9/11] Disabling old ICD files"
 
 sudo mkdir -p "${BACKUP_DIR}/old-icd"
 sudo mkdir -p /etc/vulkan/icd.d
 
-if [ -f /etc/vulkan/icd.d/mali.json ]; then
+[ -f /etc/vulkan/icd.d/mali.json ] && \
 sudo mv /etc/vulkan/icd.d/mali.json "${BACKUP_DIR}/old-icd/"
-fi
 
-if [ -f /etc/vulkan/icd.d/arm_mali.json ]; then
+[ -f /etc/vulkan/icd.d/arm_mali.json ] && \
 sudo mv /etc/vulkan/icd.d/arm_mali.json "${BACKUP_DIR}/old-icd/"
-fi
 
 sudo ldconfig
 
 echo
-echo "[10/11] Configuring user permissions"
+echo "[10/11] User permissions"
 
 sudo usermod -aG video,render "${TARGET_USER}" || true
 
@@ -184,52 +224,45 @@ sudo udevadm control --reload-rules || true
 sudo udevadm trigger || true
 
 echo
-echo "[11/11] Post-install verification"
+echo "[11/11] Validation"
 
 echo
-echo "Installed wrapper ICD:"
+echo "Installed ICD files:"
 ls -la /usr/share/vulkan/icd.d/ || true
 
 echo
-echo "Wrapper ICD content:"
+echo "ICD JSON:"
 cat /usr/share/vulkan/icd.d/mali_icd.aarch64.json || true
 
 echo
-echo "Wrapper binary:"
+echo "Wrapper library:"
 ls -la /usr/lib/aarch64-linux-gnu/libmali_wrapper.so* || true
 
 echo
-echo "Mali g29p1 library:"
+echo "Mali libraries:"
 ls -la "${MALI_LIB_DIR}"/libmali* || true
 
 echo
-echo "Checking whether wrapper contains /opt Mali path:"
-strings /usr/lib/aarch64-linux-gnu/libmali_wrapper.so | grep -iE "/opt|g29|libmali" || true
+echo "Checking embedded paths:"
+strings /usr/lib/aarch64-linux-gnu/libmali_wrapper.so \
+    | grep -iE "/opt|g29|libmali" || true
 
 echo
 echo "===================================================="
-echo " Installation completed."
+echo " Installation completed"
 echo "===================================================="
+
 echo
-echo "Backup saved at:"
+echo "Backup:"
 echo "${BACKUP_DIR}"
+
 echo
-echo "IMPORTANT: reboot now to apply group and udev permissions:"
-echo
+echo "REBOOT REQUIRED:"
 echo "sudo reboot"
+
 echo
-echo "After reboot, test with:"
-echo
+echo "After reboot run:"
 echo "vulkaninfo --summary"
-echo "vulkaninfo | grep -E "VK_KHR_xcb_surface|VK_KHR_xlib_surface|VK_KHR_wayland_surface|deviceName|driverName|driverID|driverInfo|apiVersion""
+echo 'vulkaninfo | grep -E "deviceName|driverName|driverID|driverInfo|apiVersion"'
 echo "glxinfo -B"
 echo "vkcube"
-echo
-echo "Expected Vulkan result:"
-echo "  deviceName = Mali-G610"
-echo "  driverID   = DRIVER_ID_ARM_PROPRIETARY"
-echo "  driverInfo = v1.g29p1-11eac1..."
-echo
-echo "Expected OpenGL result:"
-echo "  OpenGL renderer string: Mali-G610 (Panfrost)"
-echo "  Accelerated: yes"
